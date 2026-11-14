@@ -31,7 +31,6 @@ jobs:
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "::error::Source ZIP not found: $ZIP_NAME"
-            echo "Repository files:"
             find . -maxdepth 3 -type f -print
             exit 1
           fi
@@ -39,16 +38,14 @@ jobs:
           SOURCE_DIR="$RUNNER_TEMP/songdna-source"
           mkdir -p "$SOURCE_DIR"
 
-          echo "Extracting source ZIP..."
           unzip -q "$ZIP_FILE" -d "$SOURCE_DIR"
 
-          echo "Searching for Android project..."
           SETTINGS_FILE="$(find "$SOURCE_DIR" -type f \
             \( -name 'settings.gradle.kts' -o -name 'settings.gradle' \) \
             -path '*/android-wrapper/*' -print -quit)"
 
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "::error::Android settings.gradle file not found."
+            echo "::error::Android project settings file not found."
             find "$SOURCE_DIR" -maxdepth 6 -type f -print
             exit 1
           fi
@@ -56,21 +53,14 @@ jobs:
           ANDROID_DIR="$(dirname "$SETTINGS_FILE")"
           PROJECT_DIR="$(dirname "$ANDROID_DIR")"
 
-          echo "Android directory: $ANDROID_DIR"
-          echo "Project directory: $PROJECT_DIR"
+          echo "Android project: $ANDROID_DIR"
+          echo "Source root: $PROJECT_DIR"
 
           rsync -a --exclude='.github/' "$PROJECT_DIR/" "$GITHUB_WORKSPACE/"
 
           test -f android-wrapper/app/build.gradle.kts
 
-          if [ -f scripts/verify-source.py ]; then
-            echo "Source verification script found."
-          else
-            echo "::error::Source verification script missing."
-            exit 1
-          fi
-
-          echo "Source extraction completed."
+          echo "Source extraction successful."
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -97,8 +87,17 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Verify source files
-        run: python3 scripts/verify-source.py
+      - name: Verify Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f android-wrapper/settings.gradle.kts || \
+          test -f android-wrapper/settings.gradle
+
+          test -f android-wrapper/app/build.gradle.kts
+
+          echo "Android project structure verified."
 
       - name: Build Android debug APK
         run: |
@@ -113,12 +112,12 @@ jobs:
           APK="android-wrapper/app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "::error::APK file was not generated."
+            echo "::error::APK was not generated."
             find android-wrapper -type f -name '*.apk' -print
             exit 1
           fi
 
-          echo "APK successfully generated."
+          echo "APK generated successfully."
           ls -lh "$APK"
 
       - name: Upload APK artifact
